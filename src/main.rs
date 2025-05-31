@@ -37,7 +37,36 @@ async fn start_server() -> Result<(), Box<dyn Error>> {
 async fn handle_client_stream(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut buffer = [0; 4096];
     let len = stream.read(&mut buffer).await?;
-    //全部字段改为小写，因为有些客户端是大写，有些是小写
+
+    if buffer.starts_with(b"CONNECT") {
+        handle_https(stream, buffer, len).await?;
+    } else {
+        handle_http(stream, buffer, len).await?;
+    }
+    Ok(())
+}
+
+async fn handle_https(mut stream: TcpStream, buffer: [u8; 4096], len: usize) -> Result<(), Box<dyn Error>> {
+    let info = String::from_utf8(buffer[..len].to_vec())?;
+    let addr = regex_find("CONNECT (.*?) ", info.as_str())?;
+    if addr.len() == 0 { return Err("获取HTTPS真实地址失败".into()); }
+    stream.write(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+    stream.flush().await?;
+    //从这里开始，两个stream之间交互的就是真实的https数据了
+    let outbound = TcpStream::connect(&addr[0]).await?;
+    let (mut inbound_reader, mut inbound_writer) = tokio::io::split(stream);
+    let (mut outbound_reader, mut outbound_writer) = tokio::io::split(outbound);
+    let rt1 = tokio::spawn(async move {
+        let _ = tokio::io::copy(&mut inbound_reader, &mut outbound_writer).await;
+    });
+    let rt2 = tokio::spawn(async move {
+        let _ = tokio::io::copy(&mut outbound_reader, &mut inbound_writer).await; //这里报错是因为连接异常中断，这个我们的代理不用管
+    });
+    tokio::join!(rt1,rt2);
+    Ok(())
+}
+
+async fn handle_http(stream: TcpStream, buffer: [u8; 4096], len: usize) -> Result<(), Box<dyn Error>> {
     let http_prefix = b"http://";
     let start_pos = buffer.windows(http_prefix.len()).position(|b| b == http_prefix).ok_or("获取HTTP地址失败")?;
     let end_pos = buffer[start_pos + http_prefix.len()..len].iter().position(|b| *b == b'/').ok_or("获取HTTP地址失败")? + start_pos + http_prefix.len();
@@ -60,25 +89,25 @@ async fn handle_client_stream(mut stream: TcpStream) -> Result<(), Box<dyn Error
     let (mut inbound_reader, mut inbound_writer) = tokio::io::split(stream);
     let (mut outbound_reader, mut outbound_writer) = tokio::io::split(outbound);
     let rt1 = tokio::spawn(async move {
-        tokio::io::copy(&mut inbound_reader, &mut outbound_writer).await.unwrap();
+        let _ = tokio::io::copy(&mut inbound_reader, &mut outbound_writer).await;
     });
     let rt2 = tokio::spawn(async move {
-        tokio::io::copy(&mut outbound_reader, &mut inbound_writer).await.unwrap();
+        let _ = tokio::io::copy(&mut outbound_reader, &mut inbound_writer).await;
     });
     tokio::join!(rt1,rt2);
     Ok(())
 }
 
-// fn regex_find(rex: &str, context: &str) -> Result<Vec<String>, Box<dyn Error>> {
-//     let regx = regex::RegexBuilder::new(rex).build()?;
-//     let mut res = vec![];
-//     for re in regx.captures_iter(context) {
-//         let mut r = vec![];
-//         for index in 0..re.len() {
-//             r.push(re[index].to_string());
-//         }
-//         if r.len() > 1 { r.remove(0); }
-//         res.extend(r);
-//     };
-//     Ok(res)
-// }
+fn regex_find(rex: &str, context: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let regx = regex::RegexBuilder::new(rex).build()?;
+    let mut res = vec![];
+    for re in regx.captures_iter(context) {
+        let mut r = vec![];
+        for index in 0..re.len() {
+            r.push(re[index].to_string());
+        }
+        if r.len() > 1 { r.remove(0); }
+        res.extend(r);
+    };
+    Ok(res)
+}
