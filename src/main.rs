@@ -1,4 +1,5 @@
 mod cert;
+mod error;
 
 use std::error::Error;
 use std::io::BufReader;
@@ -13,6 +14,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::rustls::{ServerConfig, SupportedProtocolVersion};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
+use crate::error::ProxyResult;
 
 #[tokio::main]
 async fn main() {
@@ -22,7 +24,7 @@ async fn main() {
 }
 
 
-async fn start_socks5_server() -> Result<(), Box<dyn Error>> {
+async fn start_socks5_server() -> ProxyResult<()> {
     let listen = TcpListener::bind("127.0.0.1:7091").await?;
     loop {
         //接受一个新连接
@@ -35,7 +37,7 @@ async fn start_socks5_server() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn handle_socks5_client(mut inbound: TcpStream) -> Result<(), Box<dyn Error>> {
+async fn handle_socks5_client(mut inbound: TcpStream) -> ProxyResult<()> {
     let mut buffer = [0; 1024];
     let len = inbound.read(&mut buffer).await?;
     //这里还是和之前的一样，先看一下数据
@@ -92,7 +94,7 @@ async fn handle_socks5_client(mut inbound: TcpStream) -> Result<(), Box<dyn Erro
 
 
 //我们先在本地启动一个服务，监听7090端口
-async fn start_server() -> Result<(), Box<dyn Error>> {
+async fn start_server() -> ProxyResult<()> {
     let listen = TcpListener::bind("0.0.0.0:7090").await?;
     loop {
         //接受一个新连接
@@ -116,7 +118,7 @@ async fn start_server() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn handle_client_stream(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+async fn handle_client_stream(mut stream: TcpStream) -> ProxyResult<()> {
     let mut buffer = [0; 4096];
     let len = stream.read(&mut buffer).await?;
 
@@ -128,7 +130,7 @@ async fn handle_client_stream(mut stream: TcpStream) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-async fn handle_https(mut stream: TcpStream, buffer: [u8; 4096], len: usize) -> Result<(), Box<dyn Error>> {
+async fn handle_https(mut stream: TcpStream, buffer: [u8; 4096], len: usize) -> ProxyResult<()> {
     let info = String::from_utf8(buffer[..len].to_vec())?;
     let addr = regex_find("CONNECT (.*?) ", info.as_str())?;
     if addr.len() == 0 { return Err("获取HTTPS真实地址失败".into()); }
@@ -153,7 +155,7 @@ async fn handle_https(mut stream: TcpStream, buffer: [u8; 4096], len: usize) -> 
     copy_io(inbound, outbound).await
 }
 
-async fn handle_http(stream: TcpStream, buffer: [u8; 4096], len: usize) -> Result<(), Box<dyn Error>> {
+async fn handle_http(stream: TcpStream, buffer: [u8; 4096], len: usize) -> ProxyResult<()> {
     let http_prefix = b"http://";
     let start_pos = buffer.windows(http_prefix.len()).position(|b| b == http_prefix).ok_or("获取HTTP地址失败")?;
     let end_pos = buffer[start_pos + http_prefix.len()..len].iter().position(|b| *b == b'/').ok_or("获取HTTP地址失败")? + start_pos + http_prefix.len();
@@ -176,7 +178,7 @@ async fn handle_http(stream: TcpStream, buffer: [u8; 4096], len: usize) -> Resul
     copy_io(stream, outbound).await
 }
 
-async fn copy_io<I, O>(inbound: I, outbound: O) -> Result<(), Box<dyn Error>>
+async fn copy_io<I, O>(inbound: I, outbound: O) -> ProxyResult<()>
 where
     I: AsyncReadExt + AsyncWriteExt + Send + Unpin + 'static,
     O: AsyncReadExt + AsyncWriteExt + Send + Unpin + 'static,
@@ -193,7 +195,7 @@ where
     Ok(())
 }
 
-fn regex_find(rex: &str, context: &str) -> Result<Vec<String>, Box<dyn Error>> {
+fn regex_find(rex: &str, context: &str) -> ProxyResult<Vec<String>> {
     let regx = regex::RegexBuilder::new(rex).build()?;
     let mut res = vec![];
     for re in regx.captures_iter(context) {
@@ -209,12 +211,26 @@ fn regex_find(rex: &str, context: &str) -> Result<Vec<String>, Box<dyn Error>> {
 
 
 //这里需要实现一个TlsAcceptor才能解密
-fn gen_acceptor_for_sni(sni: impl AsRef<str>) -> Result<TlsAcceptor, Box<dyn Error>> {
+fn gen_acceptor_for_sni(sni: impl AsRef<str>) -> ProxyResult<TlsAcceptor> {
     //这里先要生成证书
-    let (pem, key) = cert::gen_cert_for_sni(sni.as_ref(), "sca.pem", "sca.key")?;
-    let ca_bs = pem.into_bytes();
-    let key_bs = key.into_bytes();
-    let mut reader = BufReader::new(ca_bs.as_slice());
+    //在top命令中我们看到我们的程序在建立连接的时候cpu占用很高。这个是证书生成时占用的，这里我们做一个证书缓存
+    let crt_path = format!("target/tmp/certs/{}.pem", sni.as_ref());
+    let key_path = format!("target/tmp/certs/{}.key", sni.as_ref());
+    let (sni_bs, key_bs) = if std::fs::exists(crt_path.as_str())? {
+        let sni_bs = std::fs::read(crt_path.as_str())?;
+        let key_bs = std::fs::read(key_path.as_str())?;
+        (sni_bs, key_bs)
+    } else {
+        let (pem, key) = cert::gen_cert_for_sni(sni.as_ref(), "sca.pem", "sca.key")?;
+        let sni_bs = pem.into_bytes();
+        let key_bs = key.into_bytes();
+        std::fs::write(crt_path.as_str(), sni_bs.as_slice())?;
+        std::fs::write(key_path.as_str(), key_bs.as_slice())?;
+        (sni_bs, key_bs)
+    };
+
+
+    let mut reader = BufReader::new(sni_bs.as_slice());
     let item = rustls_pemfile::read_one(&mut reader).transpose().ok_or("读取证书失败")??;
     let sni_cert = match item {
         Item::X509Certificate(cert) => cert,

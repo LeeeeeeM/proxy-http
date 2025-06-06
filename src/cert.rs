@@ -3,16 +3,17 @@ use std::str::FromStr;
 use rcgen::{BasicConstraints, CertificateParams, DnType, DnValue, ExtendedKeyUsagePurpose, Ia5String, IsCa, KeyUsagePurpose, PrintableString, SanType};
 use rcgen::KeyUsagePurpose::{CrlSign, KeyCertSign};
 use time::OffsetDateTime;
+use crate::error::ProxyResult;
 
 //生成一个根证书
-pub fn current_time() -> Result<i64, Box<dyn Error>> {
+pub fn current_time() -> ProxyResult<i64> {
     let time = std::time::SystemTime::now();
     let timestamp = time.duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64;
     Ok(timestamp)
 }
 
 
-pub fn gen_ca() -> Result<(), Box<dyn Error>> {
+pub fn gen_ca() -> ProxyResult<()> {
     let mut params = CertificateParams::default();
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     params.not_before = OffsetDateTime::from_unix_timestamp(current_time()?)?;
@@ -38,7 +39,7 @@ pub fn gen_ca() -> Result<(), Box<dyn Error>> {
 }
 
 //接下来我们实现可以为每个域名生成一个证书
-pub fn gen_cert_for_sni(sni: impl AsRef<str>, ca: &str, key: &str) -> Result<(String, String), Box<dyn Error>> {
+pub fn gen_cert_for_sni(sni: impl AsRef<str>, ca: &str, key: &str) -> ProxyResult<(String, String)> {
     let mut params = CertificateParams::default();
     //为某个SNI实现证书签发
     params.subject_alt_names.push(SanType::DnsName(Ia5String::from_str(sni.as_ref())?));
@@ -75,8 +76,8 @@ mod test_gen_cert {
     #[test]
     fn test_gen_cert() {
         gen_ca().unwrap();
-        let (pem,key)=gen_cert_for_sni("www.baidu.com","sca.pem","sca.key").unwrap();
-        std::fs::write("1.pem",pem.as_bytes()).unwrap();
-        std::fs::write("1.key",key.as_bytes()).unwrap();
+        let (pem, key) = gen_cert_for_sni("www.baidu.com", "sca.pem", "sca.key").unwrap();
+        std::fs::write("1.pem", pem.as_bytes()).unwrap();
+        std::fs::write("1.key", key.as_bytes()).unwrap();
     }
 }
