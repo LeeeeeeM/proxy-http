@@ -1,0 +1,14 @@
+[stable]
+features = ["linux"]
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]#mold 加速编译
+
+#[target.x86_64-pc-windows-msvc]
+#linker = "D:/softwares/LLVM/bin/lld-link.exe"
+#rustflags = [
+#    "-C", "link-arg=-fuse-ld=D:/softwares/LLVM/bin/ld64.lld.exe",
+#    "-C", "link-args=/OPT:REF /OPT:ICF",
+##    "-C", "prefer-dynamic"
+#]

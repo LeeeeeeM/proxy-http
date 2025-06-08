@@ -1,9 +1,8 @@
-use std::error::Error;
-use std::str::FromStr;
-use rcgen::{BasicConstraints, CertificateParams, DnType, DnValue, ExtendedKeyUsagePurpose, Ia5String, IsCa, KeyUsagePurpose, PrintableString, SanType};
-use rcgen::KeyUsagePurpose::{CrlSign, KeyCertSign};
-use time::OffsetDateTime;
 use crate::error::ProxyResult;
+use rcgen::KeyUsagePurpose::{CrlSign, KeyCertSign};
+use rcgen::{BasicConstraints, CertificateParams, DnType, DnValue, Ia5String, IsCa, PrintableString, SanType};
+use std::str::FromStr;
+use time::OffsetDateTime;
 
 //生成一个根证书
 pub fn current_time() -> ProxyResult<i64> {
@@ -12,7 +11,7 @@ pub fn current_time() -> ProxyResult<i64> {
     Ok(timestamp)
 }
 
-
+#[allow(dead_code)]
 pub fn gen_ca() -> ProxyResult<()> {
     let mut params = CertificateParams::default();
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
@@ -51,10 +50,7 @@ pub fn gen_cert_for_sni(sni: impl AsRef<str>, ca: &str, key: &str) -> ProxyResul
     params.distinguished_name.push(DnType::CountryName, DnValue::PrintableString(PrintableString::try_from("CN")?));
     params.distinguished_name.push(DnType::CommonName, DnValue::Utf8String("Proxy-Server".to_string()));
     //这里的证书用途-这个证书用途不需要，仅用于客户端认证-mtls
-    // params.key_usages.push(KeyUsagePurpose::DigitalSignature);
-    // params.key_usages.push(KeyUsagePurpose::ContentCommitment);
-    // params.extended_key_usages.push(ExtendedKeyUsagePurpose::ClientAuth);
-    //2048
+    //2048加速证书生成
     let key_size = rcgen::RsaKeySize::_2048;
     let key_pair = rcgen::KeyPair::generate_rsa_for(&rcgen::PKCS_RSA_SHA256, key_size)?;
     //这里我们就拿到了pem类型证书
