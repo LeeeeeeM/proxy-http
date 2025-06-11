@@ -1,10 +1,12 @@
-use std::io::Split;
 use crate::data::http::body::HttpBody;
 use crate::data::http::header::HttpHeader;
+use crate::data::StreamDirection;
 use crate::error::ProxyResult;
 
 mod header;
 mod body;
+
+const HTTP_HEAD_BODY_GAP: &'static [u8] = b"\r\n\r\n";
 
 //现在我们来解析一下HTTP数据
 
@@ -29,7 +31,7 @@ impl HttpVersion {
 
 pub enum HttpStatus {
     OK = 200,
-
+    NotModified = 304,
 }
 
 impl HttpStatus {
@@ -37,6 +39,7 @@ impl HttpStatus {
         let code = code.parse::<i32>()?;
         match code {
             200 => Ok(HttpStatus::OK),
+            304 => Ok(HttpStatus::NotModified),
             _ => Err("未知的Http状态码".into())
         }
     }
@@ -45,4 +48,38 @@ impl HttpStatus {
 pub struct HttpData {
     header: HttpHeader,
     body: HttpBody,
+}
+
+impl HttpData {
+    pub fn from_bytes(bs: &[u8], direction: StreamDirection) -> ProxyResult<HttpData> {
+        let pos = bs.windows(HTTP_HEAD_BODY_GAP.len()).position(|w| w == HTTP_HEAD_BODY_GAP).ok_or("HTTP数据错误")?;
+        let hdr = match direction {
+            StreamDirection::ClientToServer => HttpHeader::from_client(&bs[..pos])?,
+            StreamDirection::ServerToClient => HttpHeader::from_server(&bs[..pos])?,
+        };
+        let body = HttpBody::from_bytes(bs[pos + HTTP_HEAD_BODY_GAP.len()..].to_vec());
+        Ok(HttpData {
+            header: hdr,
+            body,
+        })
+    }
+}
+
+
+pub enum HttpMethod {
+    GET,
+    POST,
+    PUT,
+    HEAD,
+    CONNECT,
+    TRACE,
+    PATCH,
+    OPTIONS,
+    DELETE,
+}
+
+impl HttpMethod {
+    pub fn method_bytes() -> Vec<&'static [u8]> {
+        vec![b"GET", b"POST", b"PUT", b"HEAD", b"CONNECT", b"TRACE", b"PATCH", b"OPTIONS", b"DELETE"]
+    }
 }

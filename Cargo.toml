@@ -14,6 +14,7 @@ rustls-pemfile = "2.2.0"
 webpki-roots = "1.0.0"
 log = "0.4.27"
 log4rs = "1.4.0-rc1"
+uuid = { version = "1.17.0", features = ["v4"] }
 
 [dependencies.tokio]
 version = "1.45.1"

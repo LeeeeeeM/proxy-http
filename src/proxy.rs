@@ -7,22 +7,30 @@ use tokio::net::TcpStream;
 use tokio::sync;
 use tokio::task::{JoinError, JoinHandle};
 use tokio_rustls::TlsConnector;
+use uuid::Uuid;
 use crate::error::{ProxyError, ProxyResult};
 use crate::{gen_acceptor_for_sni, regex_find};
 use crate::data::{ProxyData, StreamDirection};
 
 //
 pub struct ProxyStream {
+    //生成一个id以便区分流
+    stream_id: String,
     inbound: TcpStream,
     sender: sync::mpsc::Sender<ProxyData>,
 }
 
 impl ProxyStream {
     pub fn new(inbound: TcpStream, sender: sync::mpsc::Sender<ProxyData>) -> ProxyStream {
-        ProxyStream { inbound, sender }
+        ProxyStream {
+            inbound,
+            sender,
+            stream_id: Uuid::new_v4().to_string(),
+        }
     }
 
-    async fn copy<'a, I, O>(mut reader: ReadHalf<I>, mut writer: WriteHalf<O>, direction: StreamDirection, sender: sync::mpsc::Sender<ProxyData>) -> JoinHandle<ProxyResult<()>>
+    async fn copy<'a, I, O>(mut reader: ReadHalf<I>, mut writer: WriteHalf<O>, direction: StreamDirection,
+                            sender: sync::mpsc::Sender<ProxyData>, stream_id: String) -> JoinHandle<ProxyResult<()>>
     where
         I: AsyncReadExt + Send + Unpin + 'static,
         O: AsyncWriteExt + Send + Unpin + 'static,
@@ -34,14 +42,14 @@ impl ProxyStream {
                 //及时把数据发送出去，减少延时
                 writer.write(&buffer[..len]).await?;
                 if len == 0 { break; } //读取长度为0时，此tcp连接已断开
-                let data = ProxyData::new(direction.clone(), buffer, len);
+                let data = ProxyData::new(direction.clone(), buffer, len, stream_id.clone());
                 sender.send(data).await?;
             }
             Ok::<(), ProxyError>(())
         })
     }
 
-    async fn copy_io<I, O>(inbound: I, outbound: O, sender: sync::mpsc::Sender<ProxyData>) -> ProxyResult<()>
+    async fn copy_io<I, O>(inbound: I, outbound: O, sender: sync::mpsc::Sender<ProxyData>, stream_id: String) -> ProxyResult<()>
     where
         I: AsyncReadExt + AsyncWriteExt + Send + Unpin + 'static,
         O: AsyncReadExt + AsyncWriteExt + Send + Unpin + 'static,
@@ -57,8 +65,8 @@ impl ProxyStream {
         };
         let (inbound_reader, inbound_writer) = tokio::io::split(inbound);
         let (outbound_reader, outbound_writer) = tokio::io::split(outbound);
-        let rt1 = ProxyStream::copy(inbound_reader, outbound_writer, StreamDirection::ClientToServer, sender.clone()).await;
-        let rt2 = ProxyStream::copy(outbound_reader, inbound_writer, StreamDirection::ServerToClient, sender).await;
+        let rt1 = ProxyStream::copy(inbound_reader, outbound_writer, StreamDirection::ClientToServer, sender.clone(), stream_id.clone()).await;
+        let rt2 = ProxyStream::copy(outbound_reader, inbound_writer, StreamDirection::ServerToClient, sender, stream_id).await;
         let (r1, r2) = tokio::join!(rt1,rt2);
         res_func(r1, StreamDirection::ClientToServer);
         res_func(r2, StreamDirection::ServerToClient);
@@ -85,7 +93,7 @@ impl ProxyStream {
         // outbound.write(&buffer[..len]).await?;
         outbound.write(&buffer[..start_pos]).await?;
         outbound.write(&buffer[end_pos..len]).await?;
-        ProxyStream::copy_io(self.inbound, outbound, self.sender).await
+        ProxyStream::copy_io(self.inbound, outbound, self.sender, self.stream_id).await
     }
 
     async fn handle_https(mut self, buffer: [u8; 4096], len: usize) -> ProxyResult<()> {
@@ -109,7 +117,7 @@ impl ProxyStream {
         // //这里我们就实现了HTTPS解密，但是我们的根证书还没安装
         // //sudo cp sca.pem /etc/pki/ca-trust/source/anchors/
         // //sudo update-ca-trust
-        ProxyStream::copy_io(inbound, outbound, self.sender).await
+        ProxyStream::copy_io(inbound, outbound, self.sender, self.stream_id).await
     }
 
     pub async fn start(mut self) -> ProxyResult<()> {

@@ -23,6 +23,7 @@ impl HttpHeader {
     pub fn from_client(raw: &[u8]) -> ProxyResult<HttpHeader> {
         let mut http_header = HttpHeader::new();
         let header_string = String::from_utf8(raw.to_vec())?.replace("\r\n", "\n");
+        println!("{}",header_string);
         let line = header_string.lines().next().ok_or("传入的数据错误")?;
         let mut items = line.split(" ");
         //这里解析请求头的第一行
@@ -37,6 +38,7 @@ impl HttpHeader {
     pub fn from_server(raw: &[u8]) -> ProxyResult<HttpHeader> {
         let mut http_header = HttpHeader::new();
         let header_string = String::from_utf8(raw.to_vec())?.replace("\r\n", "\n");
+        println!("{}",header_string);
         let line = header_string.lines().next().ok_or("传入的数据错误")?;
         let mut items = line.split(" ");
         http_header.version = HttpVersion::from_stream_raw(items.next().ok_or("获取version失败")?)?;

@@ -4,6 +4,7 @@ mod error;
 mod proxy;
 mod data;
 
+use std::collections::HashMap;
 use std::io::BufReader;
 use std::sync::Arc;
 use log4rs::append::console::ConsoleAppender;
@@ -18,7 +19,7 @@ use rustls_pki_types::PrivateKeyDer;
 use tokio::net::TcpListener;
 use tokio::sync;
 use tokio_rustls::TlsAcceptor;
-use crate::data::ProxyData;
+use crate::data::{HttpTcpData, ProxyData, StreamDirection};
 use crate::error::ProxyResult;
 use crate::proxy::ProxyStream;
 
@@ -48,7 +49,7 @@ fn init_log4rs() -> ProxyResult<()> {
 async fn start_server() -> ProxyResult<()> {
     let (sx, rx) = sync::mpsc::channel(1024);
     tokio::spawn(async move {
-       receive_data(rx).await;
+        receive_data(rx).await;
     });
     info!("在本地0.0.0.0:7090建立一个Tcp端口监听服务");
     let listen = TcpListener::bind("0.0.0.0:7090").await?;
@@ -63,20 +64,28 @@ async fn start_server() -> ProxyResult<()> {
         });
     }
 }
-//到目前为止，我们没有做区分stream，时间也到一个小时了，我们下期再实现。
-async fn receive_once(rx: &mut sync::mpsc::Receiver<ProxyData>) -> ProxyResult<()> {
+//到目前为止，我们没有做区分stream
+async fn receive_once(rx: &mut sync::mpsc::Receiver<ProxyData>, data: &mut HashMap<String, HttpTcpData>) -> ProxyResult<()> {
     match rx.recv().await {
         None => {}
-        Some(data) => {
-            info!("receive one {}  {}",data.direction(),data.len());
+        Some(pd) => {
+            let tcp_data = match data.get_mut(pd.stream_id()) {
+                None => {
+                    data.insert(pd.stream_id().to_string(), HttpTcpData::new());
+                    data.get_mut(pd.stream_id()).unwrap()
+                }
+                Some(res) => res,
+            };
+            tcp_data.push(pd)?;
         }
     }
     Ok(())
 }
 
 async fn receive_data(mut rx: sync::mpsc::Receiver<ProxyData>) {
+    let mut data = HashMap::new();
     loop {
-        match receive_once(&mut rx).await {
+        match receive_once(&mut rx, &mut data).await {
             Ok(_) => {}
             Err(e) => error!("{}",e.to_string()),
         }
