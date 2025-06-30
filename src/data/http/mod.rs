@@ -31,7 +31,9 @@ impl HttpVersion {
 
 pub enum HttpStatus {
     OK = 200,
+    PartialContent = 206,
     NotModified = 304,
+
 }
 
 impl HttpStatus {
@@ -51,13 +53,14 @@ pub struct HttpData {
 }
 
 impl HttpData {
-    pub fn from_bytes(bs: &[u8], direction: StreamDirection) -> ProxyResult<HttpData> {
+    pub fn from_bytes(mut bs: Vec<u8>, direction: StreamDirection) -> ProxyResult<HttpData> {
         let pos = bs.windows(HTTP_HEAD_BODY_GAP.len()).position(|w| w == HTTP_HEAD_BODY_GAP).ok_or("HTTP数据错误")?;
+        let hbs = bs.drain(..pos).collect::<Vec<_>>();
         let hdr = match direction {
-            StreamDirection::ClientToServer => HttpHeader::from_client(&bs[..pos])?,
-            StreamDirection::ServerToClient => HttpHeader::from_server(&bs[..pos])?,
+            StreamDirection::ClientToServer => HttpHeader::from_client(hbs)?,
+            StreamDirection::ServerToClient => HttpHeader::from_server(hbs)?,
         };
-        let body = HttpBody::from_bytes(bs[pos + HTTP_HEAD_BODY_GAP.len()..].to_vec());
+        let body = HttpBody::from_bytes(bs.drain(HTTP_HEAD_BODY_GAP.len()..).collect());
         Ok(HttpData {
             header: hdr,
             body,

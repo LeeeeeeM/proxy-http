@@ -3,6 +3,7 @@ mod error;
 // mod socks5;
 mod proxy;
 mod data;
+mod gui;
 
 use std::collections::HashMap;
 use std::io::BufReader;
@@ -21,14 +22,19 @@ use tokio::sync;
 use tokio_rustls::TlsAcceptor;
 use crate::data::{HttpTcpData, ProxyData, StreamDirection};
 use crate::error::ProxyResult;
+use crate::gui::ProxyView;
 use crate::proxy::ProxyStream;
-
-#[tokio::main]
-async fn main() {
-    init_log4rs().unwrap();
-    start_server().await.unwrap();
-    // start_socks5_server().await.unwrap()
+fn main() {
+    let native_options = eframe::NativeOptions::default();
+    eframe::run_native("Proxy", native_options, Box::new(|cc| ProxyView::new(cc))).unwrap();
 }
+
+// #[tokio::main]
+// async fn main() {
+//     init_log4rs().unwrap();
+//     start_server().await.unwrap();
+//     // start_socks5_server().await.unwrap()
+// }
 
 fn init_log4rs() -> ProxyResult<()> {
     let coder = PatternEncoder::new("{h({d(%Y-%m-%d %H:%M:%S)} [{f}:{L}] {l:<6})} {M}:{m}{n}");

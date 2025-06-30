@@ -15,6 +15,9 @@ webpki-roots = "1.0.0"
 log = "0.4.27"
 log4rs = "1.4.0-rc1"
 uuid = { version = "1.17.0", features = ["v4"] }
+eframe = "0.31.1"
+egui = "0.31.1"
+egui_extras = { version = "0.31.1", features = ["image", "file"] }
 
 [dependencies.tokio]
 version = "1.45.1"

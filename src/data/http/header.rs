@@ -20,7 +20,7 @@ impl HttpHeader {
             keys: Default::default(),
         }
     }
-    pub fn from_client(raw: &[u8]) -> ProxyResult<HttpHeader> {
+    pub fn from_client(raw: Vec<u8>) -> ProxyResult<HttpHeader> {
         let mut http_header = HttpHeader::new();
         let header_string = String::from_utf8(raw.to_vec())?.replace("\r\n", "\n");
         println!("{}",header_string);
@@ -35,7 +35,7 @@ impl HttpHeader {
         Ok(http_header)
     }
 
-    pub fn from_server(raw: &[u8]) -> ProxyResult<HttpHeader> {
+    pub fn from_server(raw: Vec<u8>) -> ProxyResult<HttpHeader> {
         let mut http_header = HttpHeader::new();
         let header_string = String::from_utf8(raw.to_vec())?.replace("\r\n", "\n");
         println!("{}",header_string);

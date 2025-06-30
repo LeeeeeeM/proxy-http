@@ -1,6 +1,6 @@
 mod http;
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use crate::data::http::{HttpData, HttpMethod};
 use crate::error::ProxyResult;
 
@@ -61,9 +61,8 @@ impl HttpTcpData {
     fn push_req(&mut self, raw: [u8; 4096], len: usize) -> ProxyResult<()> {
         for md in HttpMethod::method_bytes() {
             if raw.starts_with(md) && self.req_raw.len() != 0 {
-                self.reqs.push(HttpData::from_bytes(&self.req_raw, StreamDirection::ClientToServer)?);
-                self.req_raw.clear();
-                self.req_raw.shrink_to_fit();
+                let bs = self.req_raw.drain(..self.req_raw.len()).collect::<Vec<_>>();
+                self.reqs.push(HttpData::from_bytes(bs, StreamDirection::ClientToServer)?);
                 break;
             }
         }
@@ -73,9 +72,8 @@ impl HttpTcpData {
 
     fn push_res(&mut self, raw: [u8; 4096], len: usize) -> ProxyResult<()> {
         if raw.starts_with(b"HTTP/1.1") && self.res_raw.len() != 0 {
-            self.ress.push(HttpData::from_bytes(&self.res_raw, StreamDirection::ServerToClient)?);
-            self.res_raw.clear();
-            self.res_raw.shrink_to_fit();
+            let bs = self.res_raw.drain(..self.res_raw.len()).collect::<Vec<_>>();
+            self.ress.push(HttpData::from_bytes(bs, StreamDirection::ServerToClient)?);
         }
         self.res_raw.extend(&raw[..len]);
         Ok(())
@@ -99,3 +97,38 @@ impl HttpTcpData {
     }
 }
 
+#[derive(Eq, PartialEq)]
+pub enum FilterMode {
+    None,
+    XHR,
+    Document,
+    Css,
+    Js,
+    Font,
+    Image,
+    Media,
+    Ws,
+}
+
+impl FilterMode {
+    pub fn modes() -> [FilterMode; 9] {
+        [FilterMode::None, FilterMode::XHR, FilterMode::Document, FilterMode::Css, FilterMode::Js,
+            FilterMode::Font, FilterMode::Image, FilterMode::Media, FilterMode::Ws]
+    }
+}
+
+impl Display for FilterMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FilterMode::None => f.write_str("无"),
+            FilterMode::XHR => f.write_str("XHR"),
+            FilterMode::Document => f.write_str("文档"),
+            FilterMode::Css => f.write_str("Css"),
+            FilterMode::Js => f.write_str("Js"),
+            FilterMode::Font => f.write_str("字体"),
+            FilterMode::Image => f.write_str("图片"),
+            FilterMode::Media => f.write_str("媒体"),
+            FilterMode::Ws => f.write_str("套接字")
+        }
+    }
+}
