@@ -53,6 +53,12 @@ pub struct HttpData {
 }
 
 impl HttpData {
+    pub fn new() -> HttpData {
+        HttpData {
+            header: HttpHeader::new(),
+            body: HttpBody::new(),
+        }
+    }
     pub fn from_bytes(mut bs: Vec<u8>, direction: StreamDirection) -> ProxyResult<HttpData> {
         let pos = bs.windows(HTTP_HEAD_BODY_GAP.len()).position(|w| w == HTTP_HEAD_BODY_GAP).ok_or("HTTP数据错误")?;
         let hbs = bs.drain(..pos).collect::<Vec<_>>();
@@ -65,6 +71,14 @@ impl HttpData {
             header: hdr,
             body,
         })
+    }
+
+    pub fn header(&self) -> &HttpHeader {
+        &self.header
+    }
+
+    pub fn body(&self) -> &HttpBody {
+        &self.body
     }
 }
 
@@ -84,5 +98,26 @@ pub enum HttpMethod {
 impl HttpMethod {
     pub fn method_bytes() -> Vec<&'static [u8]> {
         vec![b"GET", b"POST", b"PUT", b"HEAD", b"CONNECT", b"TRACE", b"PATCH", b"OPTIONS", b"DELETE"]
+    }
+}
+
+pub struct HttpPacket {
+    request: HttpData,
+    response: HttpData,
+}
+
+impl HttpPacket {
+    pub fn new() -> HttpPacket {
+        HttpPacket {
+            request: HttpData::new(),
+            response: HttpData::new(),
+        }
+    }
+    pub fn request(&self) -> &HttpData {
+        &self.request
+    }
+
+    pub fn response(&self) -> &HttpData {
+        &self.response
     }
 }

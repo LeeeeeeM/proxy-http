@@ -58,4 +58,8 @@ impl HttpHeader {
         }
         Ok(())
     }
+
+    pub fn keys(&self)->&HashMap<String, String>{
+        &self.keys
+    }
 }

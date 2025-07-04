@@ -8,6 +8,8 @@ mod gui;
 use std::collections::HashMap;
 use std::io::BufReader;
 use std::sync::Arc;
+use std::time::Duration;
+use egui::ViewportBuilder;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::file::FileAppender;
 use log4rs::Config;
@@ -19,20 +21,27 @@ use rustls_pemfile::Item;
 use rustls_pki_types::PrivateKeyDer;
 use tokio::net::TcpListener;
 use tokio::sync;
+use tokio::time::sleep;
 use tokio_rustls::TlsAcceptor;
 use crate::data::{HttpTcpData, ProxyData, StreamDirection};
 use crate::error::ProxyResult;
 use crate::gui::ProxyView;
 use crate::proxy::ProxyStream;
 fn main() {
-    let native_options = eframe::NativeOptions::default();
+    let viewport = ViewportBuilder::default()
+        .with_title("Proxy").with_inner_size((1200.0, 6000.0));
+    let mut native_options = eframe::NativeOptions::default();
+    native_options.viewport=viewport;
     eframe::run_native("Proxy", native_options, Box::new(|cc| ProxyView::new(cc))).unwrap();
 }
 
 // #[tokio::main]
 // async fn main() {
-//     init_log4rs().unwrap();
-//     start_server().await.unwrap();
+//     tokio::spawn(async {
+//         init_log4rs().unwrap();
+//         start_server().await.unwrap();
+//     });
+//     sleep(Duration::from_secs(100000)).await;
 //     // start_socks5_server().await.unwrap()
 // }
 

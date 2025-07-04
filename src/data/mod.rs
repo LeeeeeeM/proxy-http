@@ -1,4 +1,5 @@
-mod http;
+pub mod http;
+pub mod ui;
 
 use std::fmt::{Display, Formatter, Write};
 use crate::data::http::{HttpData, HttpMethod};
