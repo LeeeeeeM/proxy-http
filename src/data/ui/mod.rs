@@ -3,15 +3,15 @@ use std::fmt::{Display, Formatter};
 #[derive(Eq, PartialEq, Clone)]
 pub enum ProxyTab {
     Header,
-    PreView,
     Param,
+    PreView,
     Cookie,
     ReqRaw,
     RespRaw,
 }
 impl ProxyTab {
     pub fn tabs() -> Vec<ProxyTab> {
-        vec![ProxyTab::Header, ProxyTab::PreView, ProxyTab::Param, ProxyTab::Cookie, ProxyTab::ReqRaw, ProxyTab::RespRaw]
+        vec![ProxyTab::Header, ProxyTab::Param, ProxyTab::PreView,  ProxyTab::Cookie, ProxyTab::ReqRaw, ProxyTab::RespRaw]
     }
 }
 
